@@ -1,40 +1,45 @@
-
 from multiprocessing import cpu_count, Pool
-from concurrent.futures import ThreadPoolExecutor
-import itertools
-from jsonschema import validate, ValidationError
-import json
-# Define your JSON Schema
-schema = {
-    "type": "object",
+from pymongo import MongoClient
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# JSON Schema Definition
+yourSchemaDefinition = {
+    "bsonType": "object",
+    "required": ["name", "age"],
     "properties": {
-        "name": {"type": "string"},
-        "age": {"type": "integer"},
-        "email": {"type": "string", "format": "email"}
-    }    
+        "name": {"bsonType": "string"},
+        "age": {"bsonType": "int", "minimum": 18},
+        "isActive": {"bsonType": "bool", "default": False},
+    },
 }
 
-def process_page(docs):
-    # This function will be executed in a separate process.
-    # Process the page of documents here.
-    for doc in docs:
-        try:
-            validate(instance=doc, schema=schema)
-        except ValidationError:
-            print(f"Document with id {doc['_id']} does not follow the schema.")
-        # process document
-        pass
+def process_page(invalid_docs):
+    for doc in invalid_docs:
+        logging.info(f"Document with id {doc['_id']} does not follow the schema.")
 
-def paginate_by_objectid(collection, page_size=10000):  
+def paginate_by_objectid(collection, page_size=10000):
     last_id = None
     while True:
         query = {}
         if last_id:
             query['_id'] = {'$gt': last_id}
-        cursor = collection.find(query).sort('_id', 1).limit(page_size)
-        yield list(cursor)
+        cursor = collection.find(query, {"_id": 1}).sort('_id', 1).limit(page_size)
+        docs = list(cursor)
+        if not docs:
+            break
+        last_id = docs[-1]['_id']
+        yield from collection.find({"_id": {"$in": [doc['_id'] for doc in docs]}, "$not": {"$jsonSchema": yourSchemaDefinition}})
 
 def get_data(collection):
     with Pool(cpu_count()) as p:
         pages = paginate_by_objectid(collection)
         p.map(process_page, pages)
+
+if __name__ == "__main__":
+    client = MongoClient('mongodb://localhost:27017/')
+    db = client['your_database_name']
+    collection = db['your_collection_name']
+    get_data(collection)
