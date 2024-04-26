@@ -1,0 +1,40 @@
+
+from multiprocessing import cpu_count, Pool
+from concurrent.futures import ThreadPoolExecutor
+import itertools
+from jsonschema import validate, ValidationError
+import json
+# Define your JSON Schema
+schema = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"},
+        "email": {"type": "string", "format": "email"}
+    }    
+}
+
+def process_page(docs):
+    # This function will be executed in a separate process.
+    # Process the page of documents here.
+    for doc in docs:
+        try:
+            validate(instance=doc, schema=schema)
+        except ValidationError:
+            print(f"Document with id {doc['_id']} does not follow the schema.")
+        # process document
+        pass
+
+def paginate_by_objectid(collection, page_size=10000):  
+    last_id = None
+    while True:
+        query = {}
+        if last_id:
+            query['_id'] = {'$gt': last_id}
+        cursor = collection.find(query).sort('_id', 1).limit(page_size)
+        yield list(cursor)
+
+def get_data(collection):
+    with Pool(cpu_count()) as p:
+        pages = paginate_by_objectid(collection)
+        p.map(process_page, pages)
