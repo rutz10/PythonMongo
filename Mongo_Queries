@@ -78,3 +78,27 @@ db.runCommand({
   ],
   cursor: {}
 });
+-------------
+
+mongo
+
+# Switch to your database
+use yourDatabase
+
+# Update documents in the collection to change the data type of the nested field if it's a string
+db.yourCollection.updateMany({"field0.field1.field2": {$type: "string"}}, {$set: {"field0.field1.$[].field2": {$toDate: "$field0.field1.field2"}}})
+mongo
+
+# Switch to your database
+use yourDatabase
+
+# Update documents in the collection to change the data type of the nested field if it's a string
+db.yourCollection.updateMany({"field0.field1.field5": {$type: "string"}}, {$set: {"field0.field1.$[].field5": {$toLong: "$field0.field1.field5"}}})
+mongo
+
+# Switch to your database
+use yourDatabase
+
+# Update documents in the collection to change the data type of the nested field to long
+db.yourCollection.updateMany({}, {$set: {"field0.field1.$[].field6": {$toLong: "$field0.field1.field6"}}})
+
