@@ -1,0 +1,80 @@
+Mongo Q
+
+db.collection.updateMany(
+  {},  // Empty filter to update all documents
+  [ { $set: { "dateField": { "$toDate": "$dateField" } } } ]
+);
+
+db.collection.find({}).forEach(function(doc) {
+  db.collection.update(
+    { "_id": doc._id },
+    { "$set": { "dateField": new Date(doc.dateField) } }
+  );
+});
+db.collection.updateMany(
+  {},  // Empty filter to update all documents
+  [ { $set: { "field3": { "$toLong": "$field3" } } } ]
+);
+db.collection.find({}).forEach(function(doc) {
+  var convertedValue = NumberLong(doc.field3);  // Convert to long
+  db.collection.update(
+    { "_id": doc._id },
+    { "$set": { "field3": convertedValue } }
+  );
+});
+db.collection.updateMany(
+  {},
+  [ { $convert: { input: "$field3", to: "long" } } ]
+);
+db.runCommand({
+  update: yourCollectionName,
+  updates: [
+    {
+      q: {}, // Empty filter to update all documents
+      u: {
+        $set: { "field3": { $toLong: "$field3" } }
+      }
+    }
+  ]
+});
+db.runCommand({
+  find: yourCollectionName,
+  filter: {}  // Empty filter to find all documents
+})
+.forEach(function(doc) {
+  var convertedValue = NumberLong(doc.field3);
+  db.runCommand({
+    update: yourCollectionName,
+    updates: [
+      {
+        q: { "_id": doc._id },
+        u: { $set: { "field3": convertedValue } }
+      }
+    ]
+  });
+});
+db.runCommand({
+  update: yourCollectionName,
+  updates: [
+    {
+      q: {}, // Empty filter to update all documents
+      u: { $convert: { input: "$field3", to: "long" } }
+    }
+  ]
+});
+db.runCommand({
+  aggregate: yourCollectionName,
+  pipeline: [
+    { $project: { _id: 1, "dateField": { $toDate: "$dateField" } } },
+    { $mergeObjects: { "input": "$$ROOT", "obj": yourCollectionName } }
+  ],
+  cursor: {}
+});
+db.runCommand({
+  aggregate: yourCollectionName,
+  pipeline: [
+    { $project: { _id: 1, "field3": { $toLong: "$field3" } } },
+    { $mergeObjects: { "input": "$$ROOT", "obj": yourCollectionName } }
+  ],
+  cursor: {}
+});
