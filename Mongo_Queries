@@ -165,3 +165,31 @@ db.collection.updateMany(
   ]
 )
 
+db.collection.updateMany(
+  { }, // Match all documents
+  [
+    {
+      $set: {
+        field1: {
+          $map: {
+            input: { $objectToArray: "$field1" },
+            as: "item",
+            in: {
+              k: "$$item.k",
+              v: "$$item.v"
+            }
+          }
+        }
+      }
+    },
+    {
+      $set: {
+        field1: {
+          $arrayToObject: "$field1"
+        }
+      }
+    }
+  ]
+)
+
+
