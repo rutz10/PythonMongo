@@ -144,3 +144,24 @@ db.collection.updateMany(
     }
   ]
 
+
+
+db.collection.updateMany(
+  { }, // Match all documents
+  [
+    {
+      $set: {
+        field1: {
+          $map: {
+            input: { $objectToArray: "$field1" },
+            as: "item",
+            in: { 
+              $$this: "$$item.v"
+            }
+          }
+        }
+      }
+    }
+  ]
+)
+
