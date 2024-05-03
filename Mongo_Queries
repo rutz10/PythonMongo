@@ -102,3 +102,22 @@ use yourDatabase
 # Update documents in the collection to change the data type of the nested field to long
 db.yourCollection.updateMany({}, {$set: {"field0.field1.$[].field6": {$toLong: "$field0.field1.field6"}}})
 
+
+db.collection.updateMany(
+  { }, // Match all documents
+  [
+    {
+      $addFields: {
+        field1: {
+          $arrayToObject: {
+            $map: {
+              input: { $objectToArray: "$field1" },
+              in: { k: "$$this.k", v: "$$this.v" }
+            }
+          }
+        }
+      }
+    }
+  ]
+)
+
