@@ -1,0 +1,93 @@
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, StringType, DoubleType, ArrayType, MapType,
+    TimestampType, LongType
+)
+
+def pyspark_type_to_java(data_type):
+    """
+    Convert PySpark data types to Java Spark data types recursively.
+    """
+    if isinstance(data_type, IntegerType):
+        return "DataTypes.IntegerType"
+    elif isinstance(data_type, StringType):
+        return "DataTypes.StringType"
+    elif isinstance(data_type, DoubleType):
+        return "DataTypes.DoubleType"
+    elif isinstance(data_type, LongType):
+        return "DataTypes.LongType"
+    elif isinstance(data_type, TimestampType):
+        return "DataTypes.TimestampType"
+    elif isinstance(data_type, ArrayType):
+        element_type = pyspark_type_to_java(data_type.elementType)
+        return f"DataTypes.createArrayType({element_type})"
+    elif isinstance(data_type, MapType):
+        key_type = pyspark_type_to_java(data_type.keyType)
+        value_type = pyspark_type_to_java(data_type.valueType)
+        return f"DataTypes.createMapType({key_type}, {value_type})"
+    elif isinstance(data_type, StructType):
+        return generate_struct_field_code(data_type)
+    else:
+        raise Exception("Unsupported data type")
+
+def generate_struct_field_code(struct_type):
+    """
+    Generate Java code for a StructType including its nested fields.
+    """
+    fields_code = [
+        f'new StructField("{field.name}", {pyspark_type_to_java(field.dataType)}, {str(field.nullable).lower()}, Metadata.empty())'
+        for field in struct_type.fields
+    ]
+    return f"new StructType(new StructField[]{{\n    " + ",\n    ".join(fields_code) + "\n}})"
+
+def schema_to_java(schema):
+    """
+    Convert a PySpark schema to a Java Spark schema definition.
+    """
+    java_schema_code = pyspark_type_to_java(schema)
+    return f"StructType schema = {java_schema_code};"
+
+# Example schema with complex nested structures
+schema = StructType([
+    StructField("Order ID", StringType(), True),
+    StructField(
+        "Customer",
+        StructType([
+            StructField("Name", StringType(), True),
+            StructField(
+                "Location",
+                StructType([
+                    StructField("City", StringType(), True),
+                    StructField("State", StringType(), True),
+                    StructField("Zip Code", IntegerType(), True),
+                ]),
+                True,
+            ),
+            StructField(
+                "Previous Orders",
+                ArrayType(
+                    StructType([
+                        StructField("Order ID", StringType(), True),
+                        StructField(
+                            "Items",
+                            ArrayType(
+                                StructType([
+                                    StructField("Product ID", LongType(), True),
+                                    StructField("Quantity", IntegerType(), True),
+                                ])
+                            ),
+                            True,
+                        ),
+                        StructField("Total Price", DoubleType(), True),
+                    ])
+                ),
+                True,
+            ),
+        ]),
+        True,
+    ),
+    StructField("Order Date", TimestampType(), True),
+])
+
+# Generate and print the Java schema code
+java_schema_code = schema_to_java(schema)
+print(java_schema_code)
