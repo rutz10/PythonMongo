@@ -1,0 +1,96 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    StructType, StructField, StringType, IntegerType, FloatType, TimestampType, ArrayType, LongType, DoubleType
+)
+import datetime
+
+def generate_dummy_data(schema):
+    """Generate dummy data recursively for a given schema."""
+    record = []
+    for field in schema.fields:
+        if isinstance(field.dataType, StringType):
+            record.append("dummy_string")
+        elif isinstance(field.dataType, IntegerType):
+            record.append(1)
+        elif isinstance(field.dataType, FloatType):
+            record.append(1.0)
+        elif isinstance(field.dataType, LongType):
+            record.append(1)
+        elif isinstance(field.dataType, DoubleType):
+            record.append(1.0)
+        elif isinstance(field.dataType, TimestampType):
+            record.append(datetime.datetime.now())
+        elif isinstance(field.dataType, StructType):
+            record.append(generate_dummy_data(field.dataType))
+        elif isinstance(field.dataType, ArrayType):
+            # For simplicity, generate an array with one element
+            if isinstance(field.dataType.elementType, StructType):
+                record.append([generate_dummy_data(field.dataType.elementType)])
+            else:
+                record.append([None])  # Placeholder for unsupported array element types
+        else:
+            record.append(None)  # For unsupported types
+    return tuple(record)
+
+# Start a Spark session
+spark = SparkSession.builder.master("local").appName("Example").getOrCreate()
+
+# Define the complex schema
+schema = StructType([
+    StructField("Order ID", StringType(), True),
+    StructField(
+        "Customer",
+        StructType(
+            [
+                StructField("Name", StringType(), True),
+                StructField(
+                    "Location",
+                    StructType(
+                        [
+                            StructField("City", StringType(), True),
+                            StructField("State", StringType(), True),
+                            StructField("Zip Code", IntegerType(), True),
+                        ]
+                    ),
+                    True,
+                ),
+                StructField(
+                    "Previous Orders",
+                    ArrayType(
+                        StructType(
+                            [
+                                StructField("Order ID", StringType(), True),
+                                StructField(
+                                    "Items",
+                                    ArrayType(
+                                        StructType(
+                                            [
+                                                StructField("Product ID", LongType(), True),
+                                                StructField("Quantity", IntegerType(), True),
+                                            ]
+                                        )
+                                    ),
+                                    True,
+                                ),
+                                StructField("Total Price", DoubleType(), True),
+                            ]
+                        )
+                    ),
+                    True,
+                ),
+            ]
+        ),
+        True,
+    ),
+    StructField("Order Date", TimestampType(), True),
+])
+
+# Create a DataFrame with one record using the defined schema
+data = [generate_dummy_data(schema)]
+df = spark.createDataFrame(data, schema=schema)
+
+# Show the DataFrame
+df.show(truncate=False)
+
+# Stop the Spark session
+spark.stop()
