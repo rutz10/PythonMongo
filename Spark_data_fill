@@ -1,0 +1,115 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    StructType, StructField, StringType, IntegerType, FloatType, TimestampType, ArrayType, LongType, DoubleType
+)
+import datetime
+
+def generate_dummy_data(schema, array_size=1):
+    """Generate dummy data recursively for a given schema."""
+    record = []
+    for field in schema.fields:
+        if isinstance(field.dataType, StringType):
+            record.append("dummy_string")
+        elif isinstance(field.dataType, IntegerType):
+            record.append(1)
+        elif isinstance(field.dataType, FloatType):
+            record.append(1.0)
+        elif isinstance(field.dataType, LongType):
+            record.append(1)
+        elif isinstance(field.dataType, DoubleType):
+            record.append(1.0)
+        elif isinstance(field.dataType, TimestampType):
+            record.append(datetime.datetime.now())
+        elif isinstance(field.dataType, StructType):
+            record.append(generate_dummy_data(field.dataType, array_size))
+        elif isinstance(field.dataType, ArrayType):
+            if isinstance(field.dataType.elementType, StructType):
+                record.append([generate_dummy_data(field.dataType.elementType, array_size) for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, StringType):
+                record.append(["dummy_string"] * array_size)
+            elif isinstance(field.dataType.elementType, IntegerType):
+                record.append([1] * array_size)
+            elif isinstance(field.dataType.elementType, FloatType):
+                record.append([1.0] * array_size)
+            elif isinstance(field.dataType.elementType, LongType):
+                record.append([1] * array_size)
+            elif isinstance(field.dataType.elementType, DoubleType):
+                record.append([1.0] * array_size)
+            elif isinstance(field.dataType.elementType, TimestampType):
+                record.append([datetime.datetime.now()] * array_size)
+            else:
+                record.append([None] * array_size)  # Placeholder for unsupported array element types
+        else:
+            record.append(None)  # For unsupported types
+    return tuple(record)
+
+def generate_multiple_dummy_data(schema, num_records, array_size=1):
+    """Generate multiple dummy records based on the schema."""
+    return [generate_dummy_data(schema, array_size) for _ in range(num_records)]
+
+# Start a Spark session
+spark = SparkSession.builder.master("local").appName("Example").getOrCreate()
+
+# Define the complex schema
+schema = StructType([
+    StructField("Order ID", StringType(), True),
+    StructField(
+        "Customer",
+        StructType(
+            [
+                StructField("Name", StringType(), True),
+                StructField(
+                    "Location",
+                    StructType(
+                        [
+                            StructField("City", StringType(), True),
+                            StructField("State", StringType(), True),
+                            StructField("Zip Code", IntegerType(), True),
+                        ]
+                    ),
+                    True,
+                ),
+                StructField(
+                    "Previous Orders",
+                    ArrayType(
+                        StructType(
+                            [
+                                StructField("Order ID", StringType(), True),
+                                StructField(
+                                    "Items",
+                                    ArrayType(
+                                        StructType(
+                                            [
+                                                StructField("Product ID", LongType(), True),
+                                                StructField("Quantity", IntegerType(), True),
+                                            ]
+                                        )
+                                    ),
+                                    True,
+                                ),
+                                StructField("Total Price", DoubleType(), True),
+                            ]
+                        )
+                    ),
+                    True,
+                ),
+            ]
+        ),
+        True,
+    ),
+    StructField("Order Date", TimestampType(), True),
+])
+
+# Number of records and array size
+num_records = 10
+array_size = 5
+
+# Create a DataFrame with multiple records using the defined schema
+data = generate_multiple_dummy_data(schema, num_records, array_size)
+df = spark.createDataFrame(data, schema=schema)
+
+# Show the DataFrame
+df.show(truncate=False)
+
+# Stop the Spark session
+spark.stop()
