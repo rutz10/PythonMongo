@@ -1,0 +1,56 @@
+import json
+import os
+
+def read_json_schema(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)
+
+def write_graphql_schema(file_path, schema):
+    with open(file_path, 'w') as file:
+        file.write(schema)
+
+def generate_graphql_type(name, properties):
+    fields = []
+    type_definitions = []
+    
+    for field, details in properties.items():
+        field_type = "String"
+        if details['type'] == 'integer':
+            field_type = "Int"
+        elif details['type'] == 'array':
+            if 'items' in details and details['items']['type'] == 'object':
+                item_type = field.capitalize()
+                sub_type, sub_type_definitions = generate_graphql_type(item_type, details['items']['properties'])
+                type_definitions.extend(sub_type_definitions)
+                field_type = f"[{item_type}]"
+            elif 'items' in details and details['items']['type'] == 'string':
+                field_type = "[String]"
+        elif details['type'] == 'object':
+            sub_type = field.capitalize()
+            sub_type, sub_type_definitions = generate_graphql_type(sub_type, details['properties'])
+            type_definitions.extend(sub_type_definitions)
+            field_type = sub_type
+        
+        fields.append(f'  {field}: {field_type}')
+    
+    type_definition = f"type {name} {{\n" + '\n'.join(fields) + "\n}"
+    type_definitions.append(type_definition)
+    
+    return name, type_definitions
+
+def generate_graphql_schema(json_schema):
+    root_type_name = "ROOT_OBJECT"
+    _, type_definitions = generate_graphql_type(root_type_name, json_schema['properties'])
+    
+    schema = '\n\n'.join(type_definitions)
+    
+    return schema
+
+def main(input_file_path, output_file_path):
+    json_schema = read_json_schema(input_file_path)
+    graphql_schema = generate_graphql_schema(json_schema)
+    write_graphql_schema(output_file_path, graphql_schema)
+
+input_file_path = 'test2.json'
+output_file_path = 'graphql_schema.graphql'
+main(input_file_path, output_file_path)
