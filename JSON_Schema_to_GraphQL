@@ -1,5 +1,4 @@
 import json
-import os
 
 def read_json_schema(file_path):
     with open(file_path, 'r') as file:
@@ -9,40 +8,73 @@ def write_graphql_schema(file_path, schema):
     with open(file_path, 'w') as file:
         file.write(schema)
 
-def generate_graphql_type(name, properties):
+def resolve_type(detail, definitions):
+    if 'type' in detail:
+        if detail['type'] == 'string':
+            return "String"
+        elif detail['type'] == 'integer':
+            return "Int"
+        elif detail['type'] == 'number':
+            return "Float"
+        elif detail['type'] == 'array':
+            item_type = resolve_type(detail['items'], definitions)
+            return f"[{item_type}]"
+        elif detail['type'] == 'object':
+            return None
+    elif '$ref' in detail:
+        ref_name = detail['$ref'].split('/')[-1]
+        return ref_name.capitalize()
+    return "String"
+
+def generate_graphql_type(name, properties, definitions, defined_types):
     fields = []
     type_definitions = []
     
-    for field, details in properties.items():
-        field_type = "String"
-        if details['type'] == 'integer':
-            field_type = "Int"
-        elif details['type'] == 'array':
-            if 'items' in details and details['items']['type'] == 'object':
-                item_type = field.capitalize()
-                sub_type, sub_type_definitions = generate_graphql_type(item_type, details['items']['properties'])
+    if name in defined_types:
+        return name, type_definitions
+    
+    if 'properties' not in properties:
+        return name, type_definitions
+    
+    for field, details in properties['properties'].items():
+        if '$ref' in details:
+            ref_name = details['$ref'].split('/')[-1]
+            field_type = ref_name.capitalize()
+            if ref_name in definitions:
+                sub_type, sub_type_definitions = generate_graphql_type(field_type, definitions[ref_name], definitions, defined_types)
                 type_definitions.extend(sub_type_definitions)
-                field_type = f"[{item_type}]"
-            elif 'items' in details and details['items']['type'] == 'string':
-                field_type = "[String]"
-        elif details['type'] == 'object':
-            sub_type = field.capitalize()
-            sub_type, sub_type_definitions = generate_graphql_type(sub_type, details['properties'])
-            type_definitions.extend(sub_type_definitions)
-            field_type = sub_type
+        else:
+            field_type = resolve_type(details, definitions)
+            if details['type'] == 'object':
+                sub_type, sub_type_definitions = generate_graphql_type(field.capitalize(), details, definitions, defined_types)
+                type_definitions.extend(sub_type_definitions)
+                field_type = sub_type
         
         fields.append(f'  {field}: {field_type}')
     
     type_definition = f"type {name} {{\n" + '\n'.join(fields) + "\n}"
     type_definitions.append(type_definition)
+    defined_types.add(name)
     
     return name, type_definitions
 
 def generate_graphql_schema(json_schema):
-    root_type_name = "ROOT_OBJECT"
-    _, type_definitions = generate_graphql_type(root_type_name, json_schema['properties'])
+    definitions = json_schema.get('definitions', {})
+    schema_definitions = []
+    defined_types = set()
     
-    schema = '\n\n'.join(type_definitions)
+    # Generate types for all definitions first
+    for def_name, def_details in definitions.items():
+        if 'properties' in def_details:
+            _, type_definitions = generate_graphql_type(def_name.capitalize(), def_details, definitions, defined_types)
+            schema_definitions.extend(type_definitions)
+    
+    # Generate the root type
+    root_type_name = json_schema['title'].replace(" Schema", "")
+    _, root_type_definitions = generate_graphql_type(root_type_name, json_schema, definitions, defined_types)
+    schema_definitions.extend(root_type_definitions)
+    
+    schema = '\n\n'.join(schema_definitions)
     
     return schema
 
@@ -50,7 +82,8 @@ def main(input_file_path, output_file_path):
     json_schema = read_json_schema(input_file_path)
     graphql_schema = generate_graphql_schema(json_schema)
     write_graphql_schema(output_file_path, graphql_schema)
-
+# Example usage
 input_file_path = 'test2.json'
 output_file_path = 'graphql_schema.graphql'
 main(input_file_path, output_file_path)
+print("GraphQL schema generated successfully!")
