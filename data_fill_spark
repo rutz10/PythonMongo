@@ -3,34 +3,54 @@ from pyspark.sql.types import (
     StructType, StructField, StringType, IntegerType, FloatType, TimestampType, ArrayType, LongType, DoubleType
 )
 import datetime
+from faker import Faker
+import random
 
-def generate_dummy_data(schema):
+# Initialize Faker
+fake = Faker()
+
+def generate_dummy_data(schema, array_size=1):
     """Generate dummy data recursively for a given schema."""
     record = []
     for field in schema.fields:
         if isinstance(field.dataType, StringType):
-            record.append("dummy_string")
+            record.append(fake.word())
         elif isinstance(field.dataType, IntegerType):
-            record.append(1)
+            record.append(fake.random_int(min=1, max=1000))
         elif isinstance(field.dataType, FloatType):
-            record.append(1.0)
+            record.append(fake.pyfloat(left_digits=3, right_digits=2, positive=True))
         elif isinstance(field.dataType, LongType):
-            record.append(1)
+            record.append(fake.random_int(min=1, max=1000000))
         elif isinstance(field.dataType, DoubleType):
-            record.append(1.0)
+            record.append(fake.pyfloat(left_digits=5, right_digits=2, positive=True))
         elif isinstance(field.dataType, TimestampType):
-            record.append(datetime.datetime.now())
+            record.append(fake.date_time_this_decade())
         elif isinstance(field.dataType, StructType):
-            record.append(generate_dummy_data(field.dataType))
+            record.append(generate_dummy_data(field.dataType, array_size))
         elif isinstance(field.dataType, ArrayType):
-            # For simplicity, generate an array with one element
             if isinstance(field.dataType.elementType, StructType):
-                record.append([generate_dummy_data(field.dataType.elementType)])
+                record.append([generate_dummy_data(field.dataType.elementType, array_size) for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, StringType):
+                record.append([fake.word() for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, IntegerType):
+                record.append([fake.random_int(min=1, max=1000) for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, FloatType):
+                record.append([fake.pyfloat(left_digits=3, right_digits=2, positive=True) for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, LongType):
+                record.append([fake.random_int(min=1, max=1000000) for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, DoubleType):
+                record.append([fake.pyfloat(left_digits=5, right_digits=2, positive=True) for _ in range(array_size)])
+            elif isinstance(field.dataType.elementType, TimestampType):
+                record.append([fake.date_time_this_decade() for _ in range(array_size)])
             else:
-                record.append([None])  # Placeholder for unsupported array element types
+                record.append([None] * array_size)  # Placeholder for unsupported array element types
         else:
             record.append(None)  # For unsupported types
     return tuple(record)
+
+def generate_multiple_dummy_data(schema, num_records, array_size=1):
+    """Generate multiple dummy records based on the schema."""
+    return [generate_dummy_data(schema, array_size) for _ in range(num_records)]
 
 # Start a Spark session
 spark = SparkSession.builder.master("local").appName("Example").getOrCreate()
@@ -85,8 +105,12 @@ schema = StructType([
     StructField("Order Date", TimestampType(), True),
 ])
 
-# Create a DataFrame with one record using the defined schema
-data = [generate_dummy_data(schema)]
+# Number of records and array size
+num_records = 10
+array_size = 5
+
+# Create a DataFrame with multiple records using the defined schema
+data = generate_multiple_dummy_data(schema, num_records, array_size)
 df = spark.createDataFrame(data, schema=schema)
 
 # Show the DataFrame
