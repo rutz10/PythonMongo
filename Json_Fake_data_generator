@@ -1,0 +1,75 @@
+import json
+from faker import Faker
+from typing import List, Dict, Any
+
+fake = Faker()
+
+def read_json_schema(file_path: str) -> dict:
+    with open(file_path, 'r') as file:
+        return json.load(file)
+
+def write_json(file_path: str, data: Any) -> None:
+    with open(file_path, 'w') as file:
+        json.dump(data, file, indent=4)
+
+def resolve_type(detail: dict) -> str:
+    if 'type' in detail:
+        return detail['type']
+    elif '$ref' in detail:
+        ref_name = detail['$ref'].split('/')[-1]
+        return ref_name
+    return 'string'
+
+def generate_fake_data(detail: dict, definitions: dict, num_array_items: int) -> Any:
+    data_type = resolve_type(detail)
+    
+    if data_type == 'string':
+        if 'enum' in detail:
+            return fake.random_element(detail['enum'])
+        if 'format' in detail and detail['format'] == 'email':
+            return fake.email()
+        if 'pattern' in detail:
+            return fake.regexify(detail['pattern'])
+        return fake.word()
+    elif data_type == 'integer':
+        return fake.random_int(min=detail.get('minimum', 0), max=detail.get('maximum', 100))
+    elif data_type == 'number':
+        return fake.random_number()
+    elif data_type == 'boolean':
+        return fake.boolean()
+    elif data_type == 'array':
+        item_type = detail['items']
+        return [generate_fake_data(item_type, definitions, num_array_items) for _ in range(num_array_items)]
+    elif data_type in definitions:
+        return generate_fake_data_from_definition(definitions[data_type], definitions, num_array_items)
+    elif data_type == 'object':
+        return generate_fake_data_from_definition(detail, definitions, num_array_items)
+    return fake.word()
+
+def generate_fake_data_from_definition(definition: dict, definitions: dict, num_array_items: int) -> dict:
+    data = {}
+    for field, details in definition['properties'].items():
+        data[field] = generate_fake_data(details, definitions, num_array_items)
+    return data
+
+def generate_fake_data_records(n: int, json_schema: dict, num_array_items: int) -> List[dict]:
+    definitions = json_schema.get('definitions', {})
+    data_records = []
+    
+    for _ in range(n):
+        data_record = generate_fake_data_from_definition(json_schema, definitions, num_array_items)
+        data_records.append(data_record)
+    
+    return data_records
+
+def main(input_file_path: str, output_file_path: str, num_records: int, num_array_items: int) -> None:
+    json_schema = read_json_schema(input_file_path)
+    fake_data_records = generate_fake_data_records(num_records, json_schema, num_array_items)
+    write_json(output_file_path, fake_data_records)
+
+# Example usage
+input_file_path = 'path/to/your/schema.json'
+output_file_path = 'path/to/output/fake_data.json'
+num_records = 10  # Number of fake data records to generate
+num_array_items = 5  # Number of items to generate for arrays
+main(input_file_path, output_file_path, num_records, num_array_items)
