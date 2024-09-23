@@ -1,0 +1,186 @@
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/mongo")
+public class FetchDataController {
+
+    private static final Logger logger = LoggerFactory.getLogger(FetchDataController.class);
+
+    @Autowired
+    private FetchDataService fetchDataService;
+
+    @PostMapping("/fetch-and-write")
+    public ResponseEntity<String> fetchDataAndWriteToJson(@RequestBody FetchDataRequest request) {
+        logger.info("Received request to fetch and write data for collection: {} with primary keys: {}",
+                request.getCollectionName(), request.getPrimaryKeys());
+
+        try {
+            // Fetch data from MongoDB
+            List<Document> documents = fetchDataService.fetchData(request.getCollectionName(), request.getPrimaryKeys());
+
+            // Write data to JSON file
+            String outputPath = "/path/to/output/file.json"; // Change to desired location
+            fetchDataService.writeDataToJson(documents, outputPath);
+
+            logger.info("Successfully processed request to fetch and write data to JSON");
+            return ResponseEntity.ok("Data fetched and written to: " + outputPath);
+        } catch (Exception e) {
+            logger.error("Error occurred while processing request: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/fetch-sorted-sample-and-write")
+    public ResponseEntity<String> fetchSortedSampleDataAndWriteToJson(@RequestBody FetchDataRequest request) {
+        logger.info("Received request to fetch sorted sample data for collection: {} sorted by: {}",
+                request.getCollectionName(), request.getPrimaryKeyField());
+
+        try {
+            // Fetch sorted and limited data from MongoDB
+            List<Document> documents = fetchDataService.fetchSortedData(
+                    request.getCollectionName(),
+                    request.getPrimaryKeyField(),
+                    request.getSampleSize(),
+                    request.getSort()
+            );
+
+            // Write data to JSON file
+            String outputPath = "/path/to/sorted-output/file.json"; // Change to desired location
+            fetchDataService.writeDataToJson(documents, outputPath);
+
+            logger.info("Successfully processed request to fetch sorted sample data and write to JSON");
+            return ResponseEntity.ok("Sorted data fetched and written to: " + outputPath);
+        } catch (Exception e) {
+            logger.error("Error occurred while processing request: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+        }
+    }
+}
+------------------------------------------
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.mongodb.BasicDBObject;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import org.bson.Document;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.stereotype.Service;
+
+import java.io.Serializable;
+import java.util.List;
+
+@Service
+public class FetchDataService implements Serializable {
+
+    private static final Logger logger = LoggerFactory.getLogger(FetchDataService.class);
+
+    @Autowired
+    private MongoTemplate mongoTemplate;
+
+    public List<Document> fetchData(String collectionName, List<String> primaryKeys) {
+        logger.info("Fetching data from collection: {} with primary keys: {}", collectionName, primaryKeys);
+
+        Query query = new Query(Criteria.where("_id").in(primaryKeys));
+        List<Document> documents = mongoTemplate.find(query, Document.class, collectionName);
+
+        logger.info("Fetched {} documents from MongoDB", documents.size());
+        return documents;
+    }
+
+    public List<Document> fetchSortedData(String collectionName, String primaryKeyField, int sampleSize, int sortOrder) {
+        logger.info("Fetching sorted data from collection: {}, sorting by: {} in {} order, with sample size: {}",
+                collectionName, primaryKeyField, sortOrder == 1 ? "ascending" : "descending", sampleSize);
+
+        Query query = new Query();
+        query.with(Sort.by(sortOrder == 1 ? Sort.Direction.ASC : Sort.Direction.DESC, primaryKeyField));
+        query.limit(sampleSize);
+
+        List<Document> documents = mongoTemplate.find(query, Document.class, collectionName);
+        logger.info("Fetched {} sorted documents from MongoDB", documents.size());
+
+        return documents;
+    }
+
+    public void writeDataToJson(List<Document> documents, String filePath) {
+        logger.info("Writing {} documents to JSON file at path: {}", documents.size(), filePath);
+
+        try {
+            SparkConf conf = new SparkConf().setAppName("MongoFetchApp").setMaster("local[*]");
+            JavaSparkContext sc = new JavaSparkContext(conf);
+            SparkSession sparkSession = SparkSession.builder().config(conf).getOrCreate();
+
+            Dataset<Row> df = sparkSession.createDataFrame(documents, Document.class);
+            df.write().json(filePath);
+
+            sc.close();
+            logger.info("Successfully wrote data to JSON file at {}", filePath);
+        } catch (Exception e) {
+            logger.error("Error occurred while writing data to JSON file: {}", e.getMessage(), e);
+            throw new RuntimeException("Error writing to JSON file", e);
+        }
+    }
+}
+--------------------------------------
+
+public class FetchDataRequest {
+    private String collectionName;
+    private List<String> primaryKeys;
+    private String primaryKeyField; // new field for sorting
+    private int sampleSize;
+    private int sort;
+
+    // Getters and Setters
+    public String getCollectionName() {
+        return collectionName;
+    }
+
+    public void setCollectionName(String collectionName) {
+        this.collectionName = collectionName;
+    }
+
+    public List<String> getPrimaryKeys() {
+        return primaryKeys;
+    }
+
+    public void setPrimaryKeys(List<String> primaryKeys) {
+        this.primaryKeys = primaryKeys;
+    }
+
+    public String getPrimaryKeyField() {
+        return primaryKeyField;
+    }
+
+    public void setPrimaryKeyField(String primaryKeyField) {
+        this.primaryKeyField = primaryKeyField;
+    }
+
+    public int getSampleSize() {
+        return sampleSize;
+    }
+
+    public void setSampleSize(int sampleSize) {
+        this.sampleSize = sampleSize;
+    }
+
+    public int getSort() {
+        return sort;
+    }
+
+    public void setSort(int sort) {
+        this.sort = sort;
+    }
+}
+---------------
